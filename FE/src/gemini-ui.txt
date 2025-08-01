@@ -1,0 +1,500 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  User, BookOpen, Brain, Gamepad2, Save, Share, MessageCircle, Upload, Eye, Trash2,
+  Settings, Bell, Search, Menu, X, ChevronDown, Activity, Users, FileText, TrendingUp,
+  Clock, Calendar, Filter, Download, RefreshCw, Star, ChevronRight, Home, Zap, Globe,
+  Award, Target, BarChart3, Shield, Sun, Moon, HelpCircle, LogOut, Plus, Minimize2,
+  Maximize2, Copy, ExternalLink, Camera, Mic, Send, Heart, Bookmark, ClipboardCheck,
+  UserCheck, GraduationCap, PieChart, BookmarkPlus, Lightbulb, CheckCircle, AlertCircle,
+  PlayCircle, PauseCircle, Bot, Code, BarChart,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+
+// The InMemoryDB and API_BASE remain the same.
+const API_BASE = "http://localhost:8000";
+
+const InMemoryDB = {
+  content: [], sharedContent: [], students: [], attendanceRecords: [], evaluationSessions: [], studentProfiles: [], learningPaths: [], progressAnalyses: [], resourceRecommendations: [],
+  analytics: { totalViews: 0, contentCreated: 0, studentsEngaged: 0, averageRating: 4.8, totalStudents: 0, evaluationsCompleted: 0, },
+  saveContent(content) { const id = Date.now().toString(); const contentWithId = { ...content, id, createdAt: new Date().toISOString(), views: 0, likes: 0, rating: 0, tags: content.tags || [], }; this.content.push(contentWithId); this.analytics.contentCreated++; return contentWithId; },
+  addStudent(student) { const existingStudent = this.students.find(s => s.name.toLowerCase() === student.name.toLowerCase()); if (!existingStudent) { const studentWithId = { ...student, id: Date.now().toString(), createdAt: new Date().toISOString(), }; this.students.push(studentWithId); this.analytics.totalStudents++; return studentWithId; } return existingStudent; },
+  saveEvaluationSession(session) { this.evaluationSessions.push(session); if (session.status === 'completed') { this.analytics.evaluationsCompleted++; } },
+  saveStudentProfile(profile) { const existingIndex = this.studentProfiles.findIndex(p => p.student_name === profile.student_name); if (existingIndex >= 0) { this.studentProfiles[existingIndex] = profile; } else { this.studentProfiles.push(profile); } },
+  getContent(userId, type = null) { return this.content.filter(item => item.userId === userId && (type ? item.type === type : true)); },
+  shareContent(contentId) { const content = this.content.find(item => item.id === contentId); if (content && !content.shared) { content.shared = true; content.sharedAt = new Date().toISOString(); this.sharedContent.push({ ...content }); return true; } return false; },
+  getSharedContent(type = null) { return this.sharedContent.filter(item => type ? item.type === type : true); },
+  deleteContent(contentId, userId) { const idx = this.content.findIndex(item => item.id === contentId && item.userId === userId); if (idx > -1) { this.content.splice(idx, 1); return true; } return false; },
+  incrementView(contentId) { const content = this.content.find(item => item.id === contentId); if (content) { content.views = (content.views || 0) + 1; this.analytics.totalViews++; } }
+};
+
+// --- ✨ MODULAR & ENHANCED UI COMPONENTS ---
+
+const Card = ({ children, className = "", padding = "p-6" }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3 }}
+    className={`bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-lg shadow-black/5 border border-gray-200/80 dark:border-gray-700/80 ${padding} ${className}`}
+  >
+    {children}
+  </motion.div>
+);
+
+const Button = ({ children, onClick, variant = "primary", size = "md", disabled = false, icon: Icon, className = "", loading = false }) => {
+  const baseClasses = "rounded-lg font-semibold transition-all duration-300 flex items-center gap-2 justify-center disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-4";
+  const variants = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg focus-visible:ring-blue-500/50",
+    secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 focus-visible:ring-gray-500/50",
+    danger: "bg-red-600 text-white hover:bg-red-700 shadow-md hover:shadow-lg focus-visible:ring-red-500/50",
+    ghost: "text-gray-600 hover:bg-gray-200/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/80 dark:hover:text-white focus-visible:ring-gray-500/50",
+    outline: "border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white focus-visible:ring-blue-500/50",
+  };
+  const sizes = { sm: "px-3 py-1.5 text-sm", md: "px-5 py-2 text-base", lg: "px-6 py-3 text-lg" };
+
+  return (
+    <button onClick={onClick} disabled={disabled || loading} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}>
+      {loading ? <RefreshCw size={18} className="animate-spin" /> : Icon && <Icon size={18} />}
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ value, onChange, placeholder, icon: Icon, type = "text", className = "" }) => (
+    <div className="relative w-full">
+        {Icon && <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />}
+        <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className={`w-full ${Icon ? 'pl-11' : 'pl-4'} pr-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 ${className}`}
+        />
+    </div>
+);
+
+const Select = ({ value, onChange, children, className="" }) => (
+    <select
+        value={value}
+        onChange={onChange}
+        className={`w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 ${className}`}
+    >
+        {children}
+    </select>
+);
+
+
+const Tooltip = ({ children, content }) => (
+  <div className="group relative inline-block">
+    {children}
+    <div className="invisible group-hover:visible absolute z-50 left-full ml-4 px-3 py-2 text-sm text-white bg-gray-900/90 dark:bg-black/90 rounded-lg shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      {content}
+      <div className="absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 w-2 h-2 bg-inherit rotate-45"></div>
+    </div>
+  </div>
+);
+
+const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge }) => (
+  <Tooltip content={label} >
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center h-12 px-4 rounded-lg transition-all duration-300 ${
+        active
+          ? 'bg-blue-600/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 font-semibold'
+          : 'text-gray-600 hover:bg-gray-200/80 dark:text-gray-400 dark:hover:bg-gray-700/80'
+      } ${collapsed ? 'justify-center' : ''}`}
+    >
+      <Icon size={22} />
+      {!collapsed && (
+        <span className="ml-4 flex-1 text-left">{label}</span>
+      )}
+      {!collapsed && badge && (
+        <span className={`px-2 py-0.5 text-xs rounded-full ${
+            badge === "AI" ? "bg-purple-200 text-purple-800" : "bg-green-200 text-green-800"
+        }`}>{badge}</span>
+      )}
+    </button>
+  </Tooltip>
+);
+
+const SkeletonLoader = () => (
+    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg animate-pulse">
+        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
+        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
+    </div>
+)
+
+// --- ✨ App Structure ---
+
+function App() {
+  // Core states
+  const [mode, setMode] = useState("teacher");
+  const [userId, setUserId] = useState("teacher1");
+  const [appName] = useState("manager");
+  const [sessionId, setSessionId] = useState("");
+  const [sidebarView, setSidebarView] = useState("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+
+  // Content/task states
+  const [taskInput, setTaskInput] = useState("");
+  const [response, setResponse] = useState("");
+  const [htmlContent, setHtmlContent] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [raw, setRaw] = useState(null);
+
+  // Dashboard/content
+  const [savedContent, setSavedContent] = useState([]);
+  const [sharedContent, setSharedContent] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState("all");
+
+  // Student Management States
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState("");
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attendanceSubject, setAttendanceSubject] = useState("");
+  const [attendanceStatus, setAttendanceStatus] = useState("present");
+
+  // Evaluation States
+  const [evaluationStudent, setEvaluationStudent] = useState("");
+  const [currentEvaluation, setCurrentEvaluation] = useState(null);
+  const [evaluationAnswer, setEvaluationAnswer] = useState("");
+  const [evaluationSessions, setEvaluationSessions] = useState([]);
+  const [studentProfiles, setStudentProfiles] = useState([]);
+
+  // UI state
+  const [notifications, setNotifications] = useState([]);
+
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
+
+  useEffect(() => {
+    if (!sessionId) setSessionId(generateSessionId());
+    setSavedContent(InMemoryDB.getContent(userId));
+    setSharedContent(InMemoryDB.getSharedContent());
+    setStudents(InMemoryDB.students);
+    setEvaluationSessions(InMemoryDB.evaluationSessions);
+    setStudentProfiles(InMemoryDB.studentProfiles);
+  }, [userId, sessionId]);
+  
+  // --- ✅ MISSING FUNCTIONS ADDED BACK ---
+  
+  function generateSessionId() {
+    return `s_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  
+  async function createSession() {
+    const newSessionId = generateSessionId();
+    setSessionId(newSessionId);
+    setNotifications(prev => [...prev, {
+        id: Date.now(),
+        message: `New session created: ${newSessionId.substring(0, 12)}...`,
+        time: "Just now",
+        unread: true
+    }]);
+    // API call can be added here if needed
+  }
+
+  async function sendToADK(promptText, contentType = "general") {
+    setLoading(true);
+    setResponse("");
+    setHtmlContent("");
+    setRaw(null);
+
+    if (!sessionId) {
+      setLoading(false);
+      alert("Please create a session first.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          app_name: appName,
+          user_id: userId,
+          session_id: sessionId,
+          new_message: { role: "user", parts: [{ text: promptText }] },
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      
+      const data = await res.json();
+      setRaw(data);
+
+      let text = "";
+      let html = "";
+      if (Array.isArray(data) && data.length > 0) {
+        const modelResponses = data.filter(event => event.content?.role === "model" && event.content?.parts?.some(part => part.text));
+        if (modelResponses.length > 0) {
+          const lastResponse = modelResponses[modelResponses.length - 1];
+          const textParts = lastResponse.content.parts.filter(part => part.text);
+          text = textParts.map(part => part.text).join('');
+          if (text.includes("<!DOCTYPE html") || text.includes("<html")) {
+            const htmlMatch = text.match(/<!DOCTYPE html[\s\S]*?<\/html>/i) || text.match(/<html[\s\S]*?<\/html>/i);
+            if (htmlMatch) html = htmlMatch[0];
+          }
+        }
+      }
+      setResponse(text || "No response received.");
+      setHtmlContent(html);
+      setTaskInput("");
+
+    } catch (error) {
+      setResponse(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function saveContent(type) {
+    const title = taskInput.trim() ? taskInput.substring(0, 50) + (taskInput.length > 50 ? "..." : "") : `[Auto] ${type} content`;
+    if (!response && !htmlContent) {
+      alert("No content to save.");
+      return;
+    }
+    InMemoryDB.saveContent({ type, title, prompt: taskInput, response, htmlContent, userId, shared: false, tags: [type, mode] });
+    setSavedContent(InMemoryDB.getContent(userId));
+    setNotifications(prev => [...prev, {
+      id: Date.now(),
+      message: `${type.toUpperCase()} content saved successfully`,
+      time: "Just now",
+      unread: true
+    }]);
+  }
+  
+  async function startStudentEvaluation() {
+    if (!evaluationStudent) {
+      alert("Please enter a student name for evaluation.");
+      return;
+    }
+    const prompt = `Start comprehensive student evaluation for: ${evaluationStudent}`;
+    await sendToADK(prompt, "evaluation");
+  }
+
+
+  // --- ✨ RENDER LOGIC ---
+
+  const renderFormCard = (title, icon, fields, action) => (
+    <Card>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
+            {React.createElement(icon, { size: 24 })}
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h2>
+      </div>
+      <div className="space-y-4 mb-6">{fields}</div>
+      <Button onClick={action.handler} loading={loading} icon={action.icon} size="md">
+        {action.label}
+      </Button>
+    </Card>
+  );
+
+  const renderResponseArea = () => (
+    <AnimatePresence>
+      {(loading || response || htmlContent) && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-8">
+            <Card>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gray-700 dark:text-gray-300"><Bot size={20}/> AI Response</h3>
+                {loading && <SkeletonLoader />}
+                {htmlContent ? (
+                    <div className="p-1 bg-gray-100 dark:bg-gray-900 rounded-lg">
+                        <iframe title="AI Visualization" srcDoc={htmlContent} className="w-full h-96 rounded-md border-0" />
+                    </div>
+                ) : (
+                    response && <div className="prose prose-blue dark:prose-invert max-w-none p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg" dangerouslySetInnerHTML={{ __html: response }}></div>
+                )}
+                {!loading && (response || htmlContent) && (
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={() => saveContent(sidebarView)} icon={Save} variant="secondary" size="sm">Save Content</Button>
+                    <Button onClick={() => navigator.clipboard.writeText(response || htmlContent)} icon={Copy} variant="ghost" size="sm">Copy</Button>
+                  </div>
+                )}
+            </Card>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  const renderContent = () => {
+    switch (sidebarView) {
+      case 'dashboard': return <DashboardView stats={InMemoryDB.analytics} content={savedContent} />;
+      case 'mcq':
+        return renderFormCard("Generate MCQs", BookOpen,
+          <Input value={taskInput} onChange={e => setTaskInput(e.target.value)} placeholder="e.g., '5 questions about the solar system'" icon={Lightbulb} />,
+          { handler: () => sendToADK(`Generate MCQs about: ${taskInput}`), label: "Generate", icon: Zap }
+        );
+      case 'visualize':
+        return renderFormCard("Create Visualization", BarChart,
+          <Input value={taskInput} onChange={e => setTaskInput(e.target.value)} placeholder="e.g., 'a bar chart of planet sizes'" icon={Lightbulb} />,
+          { handler: () => sendToADK(`Create a D3.js visualization for: ${taskInput}`), label: "Visualize", icon: Zap }
+        );
+      case 'attendance':
+        return renderFormCard("Mark Attendance", UserCheck,
+            <>
+                <Select value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
+                    <option value="">Select Student</option>
+                    {students.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                </Select>
+                <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} icon={Calendar} />
+                <Input value={attendanceSubject} onChange={e => setAttendanceSubject(e.target.value)} placeholder="Subject (e.g., Mathematics)" icon={FileText} />
+            </>,
+            { handler: () => alert("Attendance feature connected."), label: "Save Attendance", icon: Save }
+        );
+       case 'evaluation':
+        return renderFormCard("Student Evaluation", ClipboardCheck,
+          <Input value={evaluationStudent} onChange={e => setEvaluationStudent(e.target.value)} placeholder="Enter student name to start evaluation" icon={GraduationCap} />,
+          { handler: startStudentEvaluation, label: "Start Evaluation", icon: PlayCircle }
+        );
+      default: return <div className="text-center py-20"><h1 className="text-2xl">Select a tool from the sidebar</h1></div>;
+    }
+  };
+
+  return (
+    <div className={`min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+      <div className="flex">
+        {/* --- ✨ Enhanced Sidebar --- */}
+        <aside className={`sticky top-0 h-screen flex flex-col bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-r border-gray-200/80 dark:border-gray-700/80 transition-all duration-300 ${sidebarCollapsed ? 'w-24' : 'w-72'}`}>
+            <div className={`flex items-center p-4 h-20 ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+                {!sidebarCollapsed && <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">SahayakAgent</h1>}
+                <Button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} variant="ghost" size="sm" icon={sidebarCollapsed ? Menu : X} />
+            </div>
+            <nav className="flex-1 p-4 space-y-2">
+                <NavItem icon={Home} label="Dashboard" active={sidebarView === 'dashboard'} onClick={() => setSidebarView('dashboard')} collapsed={sidebarCollapsed} />
+                {!sidebarCollapsed && <p className="px-4 pt-4 pb-2 text-xs font-semibold text-gray-400 uppercase">CREATION TOOLS</p>}
+                <NavItem icon={BookOpen} label="Generate MCQs" active={sidebarView === 'mcq'} onClick={() => setSidebarView('mcq')} collapsed={sidebarCollapsed} badge="AI"/>
+                <NavItem icon={BarChart} label="Visualizations" active={sidebarView === 'visualize'} onClick={() => setSidebarView('visualize')} collapsed={sidebarCollapsed} badge="AI"/>
+                <NavItem icon={Gamepad2} label="Create Games" active={sidebarView === 'game'} onClick={() => setSidebarView('game')} collapsed={sidebarCollapsed}/>
+                {!sidebarCollapsed && <p className="px-4 pt-4 pb-2 text-xs font-semibold text-gray-400 uppercase">MANAGEMENT</p>}
+                <NavItem icon={UserCheck} label="Attendance" active={sidebarView === 'attendance'} onClick={() => setSidebarView('attendance')} collapsed={sidebarCollapsed}/>
+                <NavItem icon={ClipboardCheck} label="Evaluation" active={sidebarView === 'evaluation'} onClick={() => setSidebarView('evaluation')} collapsed={sidebarCollapsed} badge="New"/>
+            </nav>
+            <div className="p-4 border-t border-gray-200/80 dark:border-gray-700/80">
+                <NavItem icon={LogOut} label="Logout" onClick={() => {}} collapsed={sidebarCollapsed}/>
+            </div>
+        </aside>
+
+        {/* --- ✨ Main Content Area --- */}
+        <main className="flex-1 min-w-0">
+          {/* Header */}
+          <header className="sticky top-0 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/80 dark:border-gray-700/80 z-10">
+            <div className="flex items-center justify-between p-6 h-20">
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold capitalize">{sidebarView}</h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <Input placeholder="Search..." icon={Search} className="w-72 hidden lg:block" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                <Button onClick={() => setDarkMode(!darkMode)} variant="ghost" icon={darkMode ? Sun : Moon} />
+                <Button variant="ghost" icon={Bell} />
+                <Button variant="primary" icon={Plus} onClick={createSession}>New Session</Button>
+              </div>
+            </div>
+          </header>
+
+          {/* Page Content */}
+          <div className="p-8">
+            {renderContent()}
+            {sidebarView !== 'dashboard' && renderResponseArea()}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// --- ✨ VIEW-SPECIFIC COMPONENTS ---
+
+const DashboardView = ({ stats, content }) => (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+        <h2 className="text-3xl font-bold mb-2">Welcome Back, Teacher!</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">Here's a snapshot of your classroom's activity.</p>
+        
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatsCard title="Total Views" value={stats.totalViews} icon={Eye} color="blue" />
+            <StatsCard title="Content Created" value={stats.contentCreated} icon={FileText} color="purple" />
+            <StatsCard title="Students" value={stats.totalStudents} icon={Users} color="green" />
+            <StatsCard title="Avg. Rating" value={stats.averageRating} icon={Star} color="yellow" />
+        </div>
+        
+        {/* My Content Section */}
+        <div>
+            <h3 className="text-2xl font-bold mb-6">My Content Library</h3>
+            {content.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {content.map(item => <ContentCard key={item.id} content={item} />)}
+                </div>
+            ) : (
+                <Card className="text-center py-12">
+                    <Zap size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                    <h4 className="text-xl font-semibold">Your library is empty.</h4>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">Use the tools in the sidebar to create new content.</p>
+                </Card>
+            )}
+        </div>
+    </motion.div>
+);
+
+const StatsCard = ({ title, value, icon: Icon, color }) => {
+  const colors = {
+    blue: "from-blue-500 to-blue-600",
+    purple: "from-purple-500 to-purple-600",
+    green: "from-green-500 to-green-600",
+    yellow: "from-yellow-500 to-yellow-600",
+  };
+  return (
+    <Card className="!p-0 relative overflow-hidden group">
+      <div className="p-6">
+        <div className={`absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-bl ${colors[color]} rounded-full opacity-20 group-hover:scale-150 transition-transform duration-500`}></div>
+        <div className={`p-4 inline-block bg-gradient-to-br ${colors[color]} text-white rounded-xl mb-4 shadow-lg`}>
+            <Icon size={28} />
+        </div>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+        <p className="text-4xl font-bold text-gray-800 dark:text-white mt-1">{value}</p>
+      </div>
+    </Card>
+  );
+};
+
+const ContentCard = ({ content }) => {
+    const typeInfo = {
+        mcq: { icon: BookOpen, color: "blue" },
+        visualization: { icon: BarChart, color: "green" },
+        game: { icon: Gamepad2, color: "purple" },
+    };
+    const { icon: Icon, color } = typeInfo[content.type] || { icon: FileText, color: "gray" };
+
+    return (
+        <Card className="flex flex-col group">
+            <div className="flex-1">
+                <div className="flex justify-between items-start mb-3">
+                    <span className={`px-3 py-1 text-xs font-semibold text-${color}-800 bg-${color}-100 dark:bg-opacity-20 dark:text-${color}-300 rounded-full flex items-center gap-2`}>
+                        <Icon size={14} />
+                        {content.type.toUpperCase()}
+                    </span>
+                    {content.shared && <span className="px-3 py-1 text-xs font-semibold text-green-800 bg-green-100 dark:bg-opacity-20 dark:text-green-300 rounded-full">SHARED</span>}
+                </div>
+                <h3 className="font-bold text-lg text-gray-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{content.title}</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 mb-4 line-clamp-2">{content.prompt}</p>
+            </div>
+            <div className="border-t border-gray-200/80 dark:border-gray-700/80 pt-4 mt-auto flex justify-between items-center text-xs text-gray-400 dark:text-gray-500">
+                <div className="flex items-center gap-1">
+                    <Calendar size={14} />
+                    <span>{new Date(content.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex gap-3">
+                    <button className="hover:text-blue-600 transition-colors"><Share size={16}/></button>
+                    <button className="hover:text-green-600 transition-colors"><Eye size={16}/></button>
+                    <button className="hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
+                </div>
+            </div>
+        </Card>
+    );
+}
+
+export default App;
